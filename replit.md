@@ -1,32 +1,37 @@
 # Energy Horizon Scanner
 
 ## Overview
-A Python-based energy news monitoring tool that performs horizon scanning by fetching news from Google News RSS feeds and analyzing sentiment using TextBlob.
+A web-based energy news monitoring tool that performs horizon scanning by fetching news from Google News RSS feeds and analyzing sentiment using TextBlob.
 
 ## Features
-- Fetches news for strategic energy-related search terms
-- Performs sentiment analysis on headlines
-- Generates visualizations of sentiment by topic
-- Outputs results as a pandas DataFrame
+- Real-time news fetching for strategic energy-related search terms
+- Sentiment analysis on headlines (Positive/Neutral/Negative)
+- Visual sentiment overview by topic
+- Filterable news feed by topic and sentiment
+- Modern dark-themed responsive UI
 
 ## Project Structure
 ```
 .
-├── app.py          # Main application script
-├── pyproject.toml  # Python dependencies
-└── .gitignore      # Git ignore rules
+├── app.py              # Flask web application
+├── templates/
+│   └── index.html      # Main page template
+├── static/
+│   ├── style.css       # Styling
+│   └── script.js       # Frontend logic
+├── pyproject.toml      # Python dependencies
+└── .gitignore          # Git ignore rules
 ```
 
 ## Dependencies
+- Flask: Web framework
 - feedparser: RSS feed parsing
 - pandas: Data manipulation
 - textblob: Sentiment analysis
-- matplotlib: Visualization
 
 ## Running
-Execute with `python app.py` to scan for energy news and display sentiment analysis.
+The app runs on port 5000. Click "Start Scan" to fetch and analyze the latest energy news.
 
-## Notes
-- The script is a console application, not a web server
-- Matplotlib charts may not display in headless environments
-- Results can be saved to CSV by uncommenting the final line
+## API Endpoints
+- `GET /` - Main web interface
+- `GET /api/scan` - Returns JSON with news data and sentiment summary

@@ -1,11 +1,12 @@
 import feedparser
 import pandas as pd
 from textblob import TextBlob
-import matplotlib.pyplot as plt
+from flask import Flask, render_template, jsonify, send_from_directory
 from datetime import datetime
+import json
 
-# --- CONFIGURAÇÃO ---
-# Termos estratégicos para monitorar (Horizon Scanning)
+app = Flask(__name__)
+
 search_terms = [
     "Crude Oil Price",
     "OPEC+",
@@ -16,74 +17,77 @@ search_terms = [
 ]
 
 def fetch_energy_news(term):
-    """
-    Busca notícias recentes no Google News via RSS.
-    """
-    # URL formatada para o Google News RSS
     url = f"https://news.google.com/rss/search?q={term.replace(' ', '+')}&hl=en-US&gl=US&ceid=US:en"
     feed = feedparser.parse(url)
     
     news_list = []
     
-    for entry in feed.entries[:10]: # Limitando a 10 notícias por termo para o teste
-        # Análise de Sentimento Básica (TextBlob)
-        # Polarity: -1 (Muito Negativo) a +1 (Muito Positivo)
+    for entry in feed.entries[:10]:
         analysis = TextBlob(entry.title)
         sentiment_score = analysis.sentiment.polarity
         
-        # Categorização simples
         if sentiment_score > 0.1:
-            sentiment_label = "Positivo"
+            sentiment_label = "Positive"
         elif sentiment_score < -0.1:
-            sentiment_label = "Negativo"
+            sentiment_label = "Negative"
         else:
-            sentiment_label = "Neutro"
+            sentiment_label = "Neutral"
 
+        source_title = entry.source.title if hasattr(entry, 'source') and hasattr(entry.source, 'title') else 'Unknown'
+        
         news_list.append({
             'keyword': term,
             'title': entry.title,
-            'source': entry.source.title,
-            'published': entry.published,
-            'sentiment_score': sentiment_score,
+            'source': source_title,
+            'published': entry.published if hasattr(entry, 'published') else '',
+            'sentiment_score': round(sentiment_score, 3),
             'sentiment_label': sentiment_label,
             'link': entry.link
         })
             
     return news_list
 
-# --- EXECUÇÃO DO PIPELINE ---
-print("🚀 Iniciando Energy Horizon Scanner...")
-all_news = []
+def get_all_news():
+    all_news = []
+    for term in search_terms:
+        try:
+            data = fetch_energy_news(term)
+            all_news.extend(data)
+        except Exception as e:
+            print(f"Error fetching {term}: {e}")
+    return all_news
 
-for term in search_terms:
-    print(f"Scanning: {term}...")
-    try:
-        data = fetch_energy_news(term)
-        all_news.extend(data)
-    except Exception as e:
-        print(f"Erro ao buscar {term}: {e}")
+def calculate_sentiment_summary(news_data):
+    df = pd.DataFrame(news_data)
+    if df.empty:
+        return []
+    
+    summary = df.groupby('keyword').agg({
+        'sentiment_score': 'mean',
+        'title': 'count'
+    }).reset_index()
+    summary.columns = ['keyword', 'avg_sentiment', 'count']
+    summary['avg_sentiment'] = summary['avg_sentiment'].round(3)
+    return summary.to_dict('records')
 
-# Transformando em DataFrame (formato tabular familiar para economistas)
-df = pd.read_csv('energy_news_poc.csv') if False else pd.DataFrame(all_news)
+@app.route('/favicon.ico')
+def favicon():
+    return '', 204
 
-# Convertendo data para datetime
-df['published'] = pd.to_datetime(df['published'], errors='coerce')
+@app.route('/')
+def index():
+    return render_template('index.html', search_terms=search_terms)
 
-# --- VISUALIZAÇÃO RÁPIDA ---
-print(f"\nColeta finalizada: {len(df)} manchetes processadas.")
-print("-" * 30)
-print(df[['keyword', 'sentiment_label', 'title']].head())
+@app.route('/api/scan')
+def scan():
+    news_data = get_all_news()
+    sentiment_summary = calculate_sentiment_summary(news_data)
+    return jsonify({
+        'news': news_data,
+        'summary': sentiment_summary,
+        'total_count': len(news_data),
+        'scan_time': datetime.now().isoformat()
+    })
 
-# Criando um gráfico simples de Sentimento Médio por Tópico
-plt.figure(figsize=(10, 6))
-avg_sentiment = df.groupby('keyword')['sentiment_score'].mean().sort_values()
-colors = ['red' if x < 0 else 'green' for x in avg_sentiment]
-avg_sentiment.plot(kind='barh', color=colors)
-plt.title('Sentimento Médio do Mercado por Tópico (Tempo Real)')
-plt.xlabel('Score de Sentimento (Negativo < 0 < Positivo)')
-plt.grid(axis='x', linestyle='--', alpha=0.7)
-plt.tight_layout()
-plt.show()
-
-# Opcional: Salvar para abrir no Excel/R depois
-# df.to_csv("energy_scan_results.csv", index=False)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)

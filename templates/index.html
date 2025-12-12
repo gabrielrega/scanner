@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Energy Horizon Scanner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Energy Horizon Scanner</h1>
+            <p class="subtitle">Real-time energy news sentiment analysis</p>
+        </header>
+
+        <div class="controls">
+            <button id="scanBtn" class="scan-btn">Start Scan</button>
+            <span id="status" class="status"></span>
+        </div>
+
+        <div id="summary" class="summary-section hidden">
+            <h2>Sentiment Overview</h2>
+            <div id="summaryChart" class="chart-container"></div>
+        </div>
+
+        <div id="newsSection" class="news-section hidden">
+            <h2>Latest Headlines</h2>
+            <div class="filter-controls">
+                <label>Filter by topic:</label>
+                <select id="topicFilter">
+                    <option value="all">All Topics</option>
+                    {% for term in search_terms %}
+                    <option value="{{ term }}">{{ term }}</option>
+                    {% endfor %}
+                </select>
+                <label>Filter by sentiment:</label>
+                <select id="sentimentFilter">
+                    <option value="all">All</option>
+                    <option value="Positive">Positive</option>
+                    <option value="Neutral">Neutral</option>
+                    <option value="Negative">Negative</option>
+                </select>
+            </div>
+            <div id="newsGrid" class="news-grid"></div>
+        </div>
+
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+            <p>Scanning news sources...</p>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
