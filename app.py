@@ -55,8 +55,11 @@ class NewsArticle(db.Model):
     scan_time = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     keyword = db.Column(db.String(100), nullable=False)
     title = db.Column(db.Text, nullable=False)
+    summary = db.Column(db.Text, nullable=True)
     source = db.Column(db.String(200))
     published = db.Column(db.String(100))
+    headline_sentiment = db.Column(db.Float, nullable=True)
+    summary_sentiment = db.Column(db.Float, nullable=True)
     sentiment_score = db.Column(db.Float, nullable=False)
     sentiment_label = db.Column(db.String(20), nullable=False)
     link = db.Column(db.Text)
@@ -67,8 +70,11 @@ class NewsArticle(db.Model):
             'scan_time': self.scan_time.isoformat(),
             'keyword': self.keyword,
             'title': self.title,
+            'summary': self.summary,
             'source': self.source,
             'published': self.published,
+            'headline_sentiment': self.headline_sentiment,
+            'summary_sentiment': self.summary_sentiment,
             'sentiment_score': self.sentiment_score,
             'sentiment_label': self.sentiment_label,
             'link': self.link
@@ -77,6 +83,30 @@ class NewsArticle(db.Model):
 with app.app_context():
     db.create_all()
 
+def analyze_sentiment_deep(title, summary=None):
+    """Analyze sentiment from both headline and summary for deeper accuracy"""
+    headline_analysis = TextBlob(title)
+    headline_sentiment = headline_analysis.sentiment.polarity
+    
+    summary_sentiment = None
+    combined_sentiment = headline_sentiment
+    
+    if summary:
+        summary_analysis = TextBlob(summary)
+        summary_sentiment = summary_analysis.sentiment.polarity
+        combined_sentiment = (headline_sentiment + summary_sentiment) / 2
+    
+    return headline_sentiment, summary_sentiment, combined_sentiment
+
+def categorize_sentiment(score):
+    """Categorize sentiment score into label"""
+    if score > 0.1:
+        return "Positive"
+    elif score < -0.1:
+        return "Negative"
+    else:
+        return "Neutral"
+
 def fetch_energy_news(term):
     url = f"https://news.google.com/rss/search?q={term.replace(' ', '+')}&hl=en-US&gl=US&ceid=US:en"
     feed = feedparser.parse(url)
@@ -84,24 +114,26 @@ def fetch_energy_news(term):
     news_list = []
     
     for entry in feed.entries[:10]:
-        analysis = TextBlob(entry.title)
-        sentiment_score = analysis.sentiment.polarity
+        summary = None
+        if hasattr(entry, 'summary') and entry.summary:
+            summary = entry.summary
+        elif hasattr(entry, 'description') and entry.description:
+            summary = entry.description
         
-        if sentiment_score > 0.1:
-            sentiment_label = "Positive"
-        elif sentiment_score < -0.1:
-            sentiment_label = "Negative"
-        else:
-            sentiment_label = "Neutral"
-
+        headline_sent, summary_sent, combined_sentiment = analyze_sentiment_deep(entry.title, summary)
+        sentiment_label = categorize_sentiment(combined_sentiment)
+        
         source_title = entry.source.title if hasattr(entry, 'source') and hasattr(entry.source, 'title') else 'Unknown'
         
         news_list.append({
             'keyword': term,
             'title': entry.title,
+            'summary': summary,
             'source': source_title,
             'published': entry.published if hasattr(entry, 'published') else '',
-            'sentiment_score': round(sentiment_score, 3),
+            'headline_sentiment': round(headline_sent, 3),
+            'summary_sentiment': round(summary_sent, 3) if summary_sent is not None else None,
+            'sentiment_score': round(combined_sentiment, 3),
             'sentiment_label': sentiment_label,
             'link': entry.link
         })
@@ -148,8 +180,11 @@ def save_scan_to_db(news_data, sentiment_summary):
             scan_time=scan_time,
             keyword=article['keyword'],
             title=article['title'],
+            summary=article.get('summary'),
             source=article['source'],
             published=article['published'],
+            headline_sentiment=article.get('headline_sentiment'),
+            summary_sentiment=article.get('summary_sentiment'),
             sentiment_score=article['sentiment_score'],
             sentiment_label=article['sentiment_label'],
             link=article['link']
