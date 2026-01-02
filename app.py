@@ -202,16 +202,41 @@ def favicon():
 def index():
     return render_template('index.html', search_terms=search_terms)
 
+from collections import Counter
+import re
+
+def extract_keywords(headlines):
+    """Extract most common meaningful words from headlines"""
+    # Simple stop words list
+    stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'of', 'from', 'up', 'down', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'as', 'at', 'if', 'has', 'have', 'had', 'do', 'does', 'did', 'set', 'set', 'lower', 'Asia', 'again', 'today', 'says', 'will', 'not'}
+    
+    all_text = " ".join(headlines).lower()
+    # Remove special characters and keep only words
+    words = re.findall(r'\w+', all_text)
+    
+    # Filter out stop words and short words
+    keywords = [w for w in words if w not in stop_words and len(w) > 2]
+    
+    # Count occurrences
+    counts = Counter(keywords).most_common(50)
+    
+    # Format for word cloud (label, value)
+    return [{'text': word, 'size': count} for word, count in counts]
+
 @app.route('/api/scan')
 def scan():
     news_data = get_all_news()
     sentiment_summary = calculate_sentiment_summary(news_data)
+    
+    headlines = [item['title'] for item in news_data]
+    word_cloud_data = extract_keywords(headlines)
     
     scan_time = save_scan_to_db(news_data, sentiment_summary)
     
     return jsonify({
         'news': news_data,
         'summary': sentiment_summary,
+        'word_cloud': word_cloud_data,
         'total_count': len(news_data),
         'scan_time': scan_time.isoformat()
     })

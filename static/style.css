@@ -261,6 +261,29 @@ h2 {
     font-size: 0.9rem;
 }
 
+.word-cloud-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    min-height: 200px;
+}
+
+.cloud-word {
+    transition: transform 0.2s;
+    cursor: default;
+    opacity: 0.8;
+}
+
+.cloud-word:hover {
+    transform: scale(1.2);
+    opacity: 1;
+}
+
 .news-grid {
     display: grid;
     gap: 1rem;

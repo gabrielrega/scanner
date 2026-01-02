@@ -40,9 +40,11 @@ async function startScan() {
         
         displaySummary(data.summary);
         displayNews(newsData);
+        displayWordCloud(data.word_cloud);
         
         document.getElementById('summary').classList.remove('hidden');
         document.getElementById('newsSection').classList.remove('hidden');
+        document.getElementById('wordCloudSection').classList.remove('hidden');
         
         const scanTime = new Date(data.scan_time).toLocaleTimeString();
         status.textContent = `${data.total_count} articles scanned at ${scanTime} (saved to history)`;
@@ -84,6 +86,32 @@ function displaySummary(summary) {
             <div class="article-count">${item.count} articles</div>
         `;
         container.appendChild(card);
+    });
+}
+
+function displayWordCloud(words) {
+    const container = document.getElementById('wordCloud');
+    container.innerHTML = '';
+    
+    if (!words || words.length === 0) return;
+    
+    const maxCount = Math.max(...words.map(w => w.size));
+    const minCount = Math.min(...words.map(w => w.size));
+    
+    words.forEach(word => {
+        const span = document.createElement('span');
+        span.className = 'cloud-word';
+        span.textContent = word.text;
+        
+        // Calculate font size between 12px and 48px
+        const fontSize = 12 + (word.size - minCount) * (36 / (maxCount - minCount || 1));
+        span.style.fontSize = `${fontSize}px`;
+        
+        // Random color from our theme
+        const colors = ['#4facfe', '#00f2fe', '#00c853', '#ffc107', '#ff5252', '#ab47bc', '#e8e8e8'];
+        span.style.color = colors[Math.floor(Math.random() * colors.length)];
+        
+        container.appendChild(span);
     });
 }
 
