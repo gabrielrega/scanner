@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Energy Horizon Scanner</title>
+    <link rel="stylesheet" href="{{ url_for('main_bp.static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body x-data="scanner()">
+    <div class="container">
+        <header>
+            <h1>Energy Horizon Scanner</h1>
+            <p class="subtitle">Real-time energy news sentiment analysis with historical tracking</p>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab-btn" :class="{ 'active': activeTab === 'scanner' }" @click="switchTab('scanner')">Live Scanner</button>
+            <button class="tab-btn" :class="{ 'active': activeTab === 'history' }" @click="switchTab('history')">Historical Trends</button>
+        </nav>
+
+        <div id="scanner-tab" class="tab-content" x-show="activeTab === 'scanner'">
+            <div class="controls">
+                <button id="scanBtn" class="scan-btn" @click="startScan()" :disabled="loading">
+                    <span x-text="loading ? 'Scanning...' : 'Start Scan'"></span>
+                </button>
+                <span id="status" class="status" x-text="status"></span>
+            </div>
+
+            <div id="summary" class="summary-section" x-show="scanResult">
+                <h2>Sentiment Overview</h2>
+                <div id="summaryChart" class="chart-container"></div>
+            </div>
+
+            <div id="wordCloudSection" class="summary-section" x-show="scanResult">
+                <h2>Key Topics Cloud</h2>
+                <div id="wordCloud" class="word-cloud-container"></div>
+            </div>
+
+            <div id="newsSection" class="news-section" x-show="scanResult">
+                <h2>Latest Headlines</h2>
+                <div class="filter-controls">
+                    <label>Filter by topic:</label>
+                    <select id="topicFilter" x-model="topicFilter">
+                        <option value="all">All Topics</option>
+                        {% for term in search_terms %}
+                        <option value="{{ term }}">{{ term }}</option>
+                        {% endfor %}
+                    </select>
+                    <label>Filter by sentiment:</label>
+                    <select id="sentimentFilter" x-model="sentimentFilter">
+                        <option value="all">All</option>
+                        <option value="Positive">Positive</option>
+                        <option value="Neutral">Neutral</option>
+                        <option value="Negative">Negative</option>
+                    </select>
+                </div>
+                <div id="newsGrid" class="news-grid"></div>
+            </div>
+
+            <div id="loading" class="loading" x-show="loading">
+                <div class="spinner"></div>
+                <p x-text="status"></p>
+            </div>
+        </div>
+
+        <div id="history-tab" class="tab-content" x-show="activeTab === 'history'">
+            <div class="history-controls">
+                <button id="refreshHistoryBtn" class="scan-btn" @click="loadHistory()" :disabled="historyLoading">
+                    <span x-text="historyLoading ? 'Loading...' : 'Refresh History'"></span>
+                </button>
+                <span id="historyStatus" class="status" x-text="historyStatus"></span>
+            </div>
+
+            <div id="historySummary" class="summary-section" x-show="historyResult">
+                <h2>Scan Statistics</h2>
+                <div id="statsGrid" class="stats-grid"></div>
+            </div>
+
+            <div id="trendSection" class="trend-section" x-show="historyResult">
+                <h2>Sentiment Trends Over Time</h2>
+                <div class="chart-wrapper">
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </div>
+
+            <div id="historyLoading" class="loading" x-show="historyLoading">
+                <div class="spinner"></div>
+                <p>Loading historical data...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function scanner() {
+            return {
+                activeTab: 'scanner',
+                loading: false,
+                historyLoading: false,
+                status: '',
+                historyStatus: '',
+                scanResult: null,
+                historyResult: null,
+                newsData: [],
+                topicFilter: 'all',
+                sentimentFilter: 'all',
+                trendChart: null,
+
+                switchTab(tab) {
+                    this.activeTab = tab;
+                    if (tab === 'history' && !this.historyResult) {
+                        this.loadHistory();
+                    }
+                },
+
+                async startScan() {
+                    this.loading = true;
+                    this.status = 'Initializing scan...';
+                    try {
+                        const response = await fetch('/api/scan', { method: 'POST' });
+                        const data = await response.json();
+                        this.pollTaskStatus(data.task_id);
+                    } catch (error) {
+                        this.status = 'Error starting scan. Please try again.';
+                        console.error('Scan start error:', error);
+                        this.loading = false;
+                    }
+                },
+
+                pollTaskStatus(taskId) {
+                    const interval = setInterval(async () => {
+                        const response = await fetch(`/api/tasks/${taskId}`);
+                        const data = await response.json();
+
+                        if (data.state === 'SUCCESS') {
+                            clearInterval(interval);
+                            this.scanResult = data.result;
+                            this.newsData = data.result.news;
+                            this.displaySummary(data.result.summary);
+                            this.displayNews(this.filteredNews);
+                            this.displayWordCloud(data.result.word_cloud);
+                            const scanTime = new Date(data.result.scan_time).toLocaleTimeString();
+                            this.status = `${data.result.total_count} articles scanned at ${scanTime} (saved to history)`;
+                            this.loading = false;
+                        } else if (data.state === 'FAILURE') {
+                            clearInterval(interval);
+                            this.status = 'An error occurred during the scan.';
+                            console.error('Task failure:', data.status);
+                            this.loading = false;
+                        } else {
+                            this.status = data.status || 'Processing...';
+                        }
+                    }, 2000);
+                },
+
+                displaySummary(summary) {
+                    const container = document.getElementById('summaryChart');
+                    container.innerHTML = '';
+                    summary.sort((a, b) => b.avg_sentiment - a.avg_sentiment);
+                    summary.forEach(item => {
+                        let sentimentClass = 'neutral';
+                        if (item.avg_sentiment > 0.1) sentimentClass = 'positive';
+                        else if (item.avg_sentiment < -0.1) sentimentClass = 'negative';
+                        const barWidth = Math.abs(item.avg_sentiment) * 100 + 50;
+                        let barColor = '#ffc107';
+                        if (sentimentClass === 'positive') barColor = '#00c853';
+                        else if (sentimentClass === 'negative') barColor = '#ff5252';
+                        const card = document.createElement('div');
+                        card.className = 'sentiment-card';
+                        card.innerHTML = `
+                            <h3>${item.keyword}</h3>
+                            <div class="sentiment-score ${sentimentClass}">${item.avg_sentiment > 0 ? '+' : ''}${item.avg_sentiment.toFixed(2)}</div>
+                            <div class="sentiment-bar">
+                                <div class="sentiment-bar-fill" style="width: ${barWidth}%; background: ${barColor}"></div>
+                            </div>
+                            <div class="article-count">${item.count} articles</div>
+                        `;
+                        container.appendChild(card);
+                    });
+                },
+
+                displayWordCloud(words) {
+                    const container = document.getElementById('wordCloud');
+                    container.innerHTML = '';
+                    if (!words || words.length === 0) return;
+                    const maxCount = Math.max(...words.map(w => w.size));
+                    const minCount = Math.min(...words.map(w => w.size));
+                    words.forEach(word => {
+                        const span = document.createElement('span');
+                        span.className = 'cloud-word';
+                        span.textContent = word.text;
+                        const fontSize = 12 + (word.size - minCount) * (36 / (maxCount - minCount || 1));
+                        span.style.fontSize = `${fontSize}px`;
+                        const colors = ['#4facfe', '#00f2fe', '#00c853', '#ffc107', '#ff5252', '#ab47bc', '#e8e8e8'];
+                        span.style.color = colors[Math.floor(Math.random() * colors.length)];
+                        container.appendChild(span);
+                    });
+                },
+
+                displayNews(news) {
+                    const container = document.getElementById('newsGrid');
+                    container.innerHTML = '';
+                    if (news.length === 0) {
+                        container.innerHTML = '<p style="text-align: center; color: #888;">No news found matching your filters.</p>';
+                        return;
+                    }
+                    news.forEach(item => {
+                        let sentimentClass = 'neutral';
+                        if (item.sentiment_label === 'Positive') sentimentClass = 'positive';
+                        else if (item.sentiment_label === 'Negative') sentimentClass = 'negative';
+                        const newsItem = document.createElement('article');
+                        newsItem.className = `news-item ${sentimentClass}`;
+                        newsItem.innerHTML = `
+                            <div class="news-header">
+                                <span class="news-keyword">${item.keyword}</span>
+                                <span class="sentiment-badge ${sentimentClass}">${item.sentiment_label} (${item.sentiment_score})</span>
+                            </div>
+                            <h3 class="news-title"><a href="${item.link}" target="_blank" rel="noopener">${item.title}</a></h3>
+                            <div class="news-meta">
+                                <span>${item.source}</span>
+                                <span>${item.published}</span>
+                            </div>
+                        `;
+                        container.appendChild(newsItem);
+                    });
+                },
+
+                get filteredNews() {
+                    if (!this.scanResult) return [];
+                    let filtered = this.newsData;
+                    if (this.topicFilter !== 'all') {
+                        filtered = filtered.filter(item => item.keyword === this.topicFilter);
+                    }
+                    if (this.sentimentFilter !== 'all') {
+                        filtered = filtered.filter(item => item.sentiment_label === this.sentimentFilter);
+                    }
+                    return filtered;
+                },
+
+                async loadHistory() {
+                    this.historyLoading = true;
+                    this.historyStatus = 'Loading...';
+                    try {
+                        const [historyRes, summaryRes] = await Promise.all([
+                            fetch('/api/history'),
+                            fetch('/api/history/summary')
+                        ]);
+                        const historyData = await historyRes.json();
+                        const summaryData = await summaryRes.json();
+                        this.historyResult = { historyData, summaryData };
+                        this.displayStats(summaryData);
+                        this.displayTrendChart(historyData);
+                        this.historyStatus = `Showing ${summaryData.total_scans} scans over ${historyData.days} days`;
+                    } catch (error) {
+                        this.historyStatus = 'Error loading history. Please try again.';
+                        console.error('History error:', error);
+                    } finally {
+                        this.historyLoading = false;
+                    }
+                },
+
+                displayStats(data) {
+                    const container = document.getElementById('statsGrid');
+                    container.innerHTML = '';
+                    const totalScansCard = document.createElement('div');
+                    totalScansCard.className = 'stat-card';
+                    totalScansCard.innerHTML = `
+                        <h3>Total Scans</h3>
+                        <div class="stat-value">${data.total_scans}</div>
+                        <div class="stat-detail">Historical records</div>
+                    `;
+                    container.appendChild(totalScansCard);
+                    if (data.summary.length > 0) {
+                        const avgSentiments = data.summary.map(s => s.overall_avg);
+                        const overallAvg = avgSentiments.reduce((a, b) => a + b, 0) / avgSentiments.length;
+                        let sentimentClass = 'neutral';
+                        if (overallAvg > 0.1) sentimentClass = 'positive';
+                        else if (overallAvg < -0.1) sentimentClass = 'negative';
+                        const avgCard = document.createElement('div');
+                        avgCard.className = 'stat-card';
+                        avgCard.innerHTML = `
+                            <h3>Overall Avg Sentiment</h3>
+                            <div class="stat-value" style="color: ${sentimentClass === 'positive' ? '#00c853' : sentimentClass === 'negative' ? '#ff5252' : '#ffc107'}">${overallAvg > 0 ? '+' : ''}${overallAvg.toFixed(3)}</div>
+                            <div class="stat-detail">Across all topics</div>
+                        `;
+                        container.appendChild(avgCard);
+                        const topicsCard = document.createElement('div');
+                        topicsCard.className = 'stat-card';
+                        topicsCard.innerHTML = `
+                            <h3>Topics Tracked</h3>
+                            <div class="stat-value">${data.summary.length}</div>
+                            <div class="stat-detail">Energy keywords</div>
+                        `;
+                        container.appendChild(topicsCard);
+                    }
+                },
+
+                displayTrendChart(data) {
+                    const ctx = document.getElementById('trendChart').getContext('2d');
+                    if (this.trendChart) {
+                        this.trendChart.destroy();
+                    }
+                    const colors = ['#4facfe', '#00f2fe', '#00c853', '#ffc107', '#ff5252', '#ab47bc'];
+                    const datasets = data.keywords.map((keyword, index) => {
+                        const keywordData = data.history[keyword] || [];
+                        return {
+                            label: keyword,
+                            data: keywordData.map(d => ({ x: new Date(d.scan_time), y: d.avg_sentiment })),
+                            borderColor: colors[index % colors.length],
+                            backgroundColor: colors[index % colors.length] + '20',
+                            fill: false,
+                            tension: 0.3,
+                            pointRadius: 4,
+                            pointHoverRadius: 6
+                        };
+                    });
+                    this.trendChart = new Chart(ctx, {
+                        type: 'line',
+                        data: { datasets },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: { mode: 'index', intersect: false },
+                            plugins: {
+                                legend: { position: 'top', labels: { color: '#888', usePointStyle: true } },
+                                tooltip: {
+                                    backgroundColor: 'rgba(26, 26, 46, 0.9)',
+                                    titleColor: '#e8e8e8',
+                                    bodyColor: '#e8e8e8',
+                                    borderColor: 'rgba(79, 172, 254, 0.3)',
+                                    borderWidth: 1
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    type: 'time',
+                                    time: { unit: 'hour', displayFormats: { hour: 'MMM d, HH:mm' } },
+                                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                                    ticks: { color: '#888' }
+                                },
+                                y: {
+                                    min: -1,
+                                    max: 1,
+                                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                                    ticks: {
+                                        color: '#888',
+                                        callback: function(value) {
+                                            if (value === 0) return '0 (Neutral)';
+                                            if (value > 0) return '+' + value.toFixed(1) + ' (Positive)';
+                                            return value.toFixed(1) + ' (Negative)';
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                },
+
+                init() {
+                    this.$watch('topicFilter', () => this.displayNews(this.filteredNews));
+                    this.$watch('sentimentFilter', () => this.displayNews(this.filteredNews));
+                }
+            };
+        }
+    </script>
+</body>
+</html>

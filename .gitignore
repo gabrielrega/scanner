@@ -39,3 +39,5 @@ Thumbs.db
 
 # Project specific
 *.csv
+instance/*.db
+instance/*.sqlite
