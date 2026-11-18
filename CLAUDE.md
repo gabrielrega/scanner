@@ -7,7 +7,7 @@ Dashboard web para monitoramento de sentimento em notícias do setor de energia.
 - **Backend**: Flask + SQLAlchemy + Flask-Migrate
 - **Tarefas assíncronas**: Celery + Redis
 - **NLP**: TextBlob + NLTK
-- **Frontend**: HTML/CSS/JS vanilla + Chart.js
+- **Frontend**: HTML/CSS + Alpine.js + Chart.js (via CDN, JS inline no template)
 - **Deploy**: Docker Compose (recomendado)
 
 ## Como rodar
@@ -52,10 +52,8 @@ project/
   models.py              — modelos SQLAlchemy (SentimentResult, etc.)
   main/                  — blueprint de UI (rota /)
   api/                   — blueprint de API REST (/api/scan, /api/history)
-  templates/index.html   — template Jinja2
-  static/
-    style.css            — estilos
-    script.js            — lógica do frontend (Chart.js, word cloud, polling)
+  templates/index.html   — template Jinja2 (inclui o JS do frontend inline: Alpine.js, Chart.js)
+  static/style.css       — estilos
 migrations/              — scripts Flask-Migrate
 ```
 
@@ -64,8 +62,9 @@ migrations/              — scripts Flask-Migrate
 | Endpoint | Método | Descrição |
 |---|---|---|
 | `/api/scan` | POST | Dispara novo scan (assíncrono via Celery) |
-| `/api/scan/<task_id>` | GET | Consulta status/resultado do scan |
+| `/api/tasks/<task_id>` | GET | Consulta status/resultado do scan |
 | `/api/history` | GET | Retorna histórico dos últimos 7 dias |
+| `/api/history/summary` | GET | Resumo do histórico |
 
 ## Keywords monitoradas
 

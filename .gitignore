@@ -41,3 +41,12 @@ Thumbs.db
 *.csv
 instance/*.db
 instance/*.sqlite
+
+# Env / secrets
+.env
+.env.*
+
+# Data
+*.sqlite3
+*.log
+node_modules/
